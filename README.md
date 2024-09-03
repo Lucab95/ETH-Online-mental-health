@@ -1,3 +1,15 @@
+# Nillion installation check --> https://docs.nillion.com/nillion-sdk-and-tools
+curl https://nilup.nilogy.xyz/install.sh | bash
+# open new terminal
+nilup -V
+// Your output should be similar to the below
+nilup 22c84830fff3c86beec27a8cb6353d45e7bfb8a4
+
+nilup install latest
+nilup use latest
+nilup init
+
+
 # ETH-Online-mental-health
 ### Inference 
 
