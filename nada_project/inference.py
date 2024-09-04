@@ -79,8 +79,9 @@ def main():
     model_user_client = create_nillion_client(model_user_userkey, model_user_nodekey)
 
     # Define permissions and other parameters
-    permissions = nillion.Permissions.default_for_user(model_user_client.user_id)
-    print("permissions", permissions)
+    
+    
+    
     # Payments configuration
     payments_config = create_payments_config(os.getenv("NILLION_NILCHAIN_CHAIN_ID"), os.getenv("NILLION_NILCHAIN_GRPC"))
     payments_client = LedgerClient(payments_config)
@@ -93,6 +94,11 @@ def main():
     program_id = provider_variables["program_id"]
     model_store_id = provider_variables["model_store_id"]
     model_provider_party_id = provider_variables["model_provider_party_id"]
+    
+    permissions = nillion.Permissions.default_for_user(model_user_client.user_id)
+    print("is it allowed", permissions.is_compute_allowed(model_user_client.user_id, program_id))
+    permissions.add_compute_permissions({model_user_client.user_id: {program_id}})
+    print("permissions", permissions)
 
     cluster_id = os.getenv("NILLION_CLUSTER_ID")
 
@@ -100,20 +106,22 @@ def main():
 
     # Store the features in the Nillion network (async call)
     features_store_id = asyncio.run(store_features(model_user_client, payments_wallet, payments_client, cluster_id, single_input, "my_input", na.SecretRational, 1, permissions))
-    print('stored')
+    print('stored', features_store_id)\
+
     # Step 9: Set up the compute bindings and run inference
     compute_bindings = nillion.ProgramBindings(program_id)
     compute_bindings.add_input_party("Provider", model_provider_party_id)
     compute_bindings.add_input_party("User", model_user_client.party_id)
     compute_bindings.add_output_party("User", model_user_client.party_id)
-
+    print("compute_bindings", compute_bindings)
     # Run the computation
     result = asyncio.run(compute_results(model_user_client, payments_wallet, payments_client, program_id, cluster_id, compute_bindings, model_store_id, features_store_id))
-
+    print("result", result)
     # Step 10: Return the result of the computation
     first_key = next(iter(result))
     output_value = result[first_key]
-    return output_value.output(user, "my_output")
+    print("output_value", output_value)
+    # return output_value.output(user, "my_output")
 
 if __name__ == "__main__":
     main()
