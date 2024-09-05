@@ -42,7 +42,6 @@ async def compute_results(model_user_client, payments_wallet, payments_client, p
     )
     return result
 
-
 from dotenv import load_dotenv
 def load_environment():
     home = os.getenv("HOME")

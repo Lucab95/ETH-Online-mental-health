@@ -17,7 +17,7 @@ def nada_main():
     mental_health_model.load_state_from_network("mental_health_nn", provider, na.SecretRational)
 
     # Step 4: Load input data to be used for inference (provided by Party1)
-    my_input = na.array((1, 60), user, "my_input", na.SecretRational)
+    my_input = na.array([60], user, "my_input", na.SecretRational)
 
     # Step 5: Compute inference
     # Note: completely equivalent to `my_model.forward(...)`

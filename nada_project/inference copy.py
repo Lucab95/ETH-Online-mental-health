@@ -14,6 +14,7 @@ import os
 import random
 import torch
 from cosmpy.crypto.keypairs import PrivateKey
+from dotenv import load_dotenv
 
 async def store_features(model_user_client, payments_wallet, payments_client, cluster_id, input_data, secret_name, nada_type, ttl_days, permissions):
     features_store_id = await store_secret_array(
@@ -30,17 +31,43 @@ async def store_features(model_user_client, payments_wallet, payments_client, cl
     return features_store_id
 
 async def compute_results(model_user_client, payments_wallet, payments_client, program_id, cluster_id, compute_bindings, model_store_id, features_store_id):
-    result = await compute(
+    receipt_compute = await get_quote_and_pay(
         model_user_client,
+        nillion.Operation.compute(program_id, nillion.NadaValues({})),
         payments_wallet,
         payments_client,
-        program_id,
+        cluster_id,
+    )
+    print(dir(receipt_compute))
+    _ = await model_user_client.compute(
         cluster_id,
         compute_bindings,
         [model_store_id, features_store_id],
         nillion.NadaValues({}),
-        verbose=True,
+        receipt_compute,
     )
+    print("Computing", _)
+    # while True:
+    #     compute_event = await client.next_compute_event()
+    #     if isinstance(compute_event, nillion.ComputeFinishedEvent):
+    #         if verbose:
+    #             print(f"✅ Compute complete for compute_id {compute_event.uuid}")
+    #         return compute_event.result.value
+    
+    
+    
+    # result = await compute(
+    #     model_user_client,
+    #     payments_wallet,
+    #     payments_client,
+    #     program_id,
+    #     cluster_id,
+    #     compute_bindings,
+    #     [model_store_id, features_store_id],
+    #     nillion.NadaValues({}),
+    #     verbose=True,
+    # )
+    result =1
     return result
 
 from dotenv import load_dotenv
@@ -51,9 +78,21 @@ def load_environment():
     load_dotenv(f".env")
 
 def main():
+    # load_environment()
+    # load_dotenv('.env', override=True)
+    # with open('.env') as f:
+    #     for line in f:
+    #         # Ignore comments and empty lines
+    #         line = line.strip()
+    #         if line and not line.startswith('#'):
+    #             key, value = line.split('=', 1)
+    #             os.environ[key.strip()] = value.strip()
+    
+    # Load environment variables
+    load_environment()
     
     #Prepare data
-    csv_file_path = 'depression_dataset copy.csv'  # Update with your actual file path
+    csv_file_path = 'depression_dataset.csv'  # Update with your actual file path
     data = pd.read_csv(csv_file_path)
 
     # Step 2: Select the first row and drop unnecessary columns (adjust column names as needed)
@@ -64,7 +103,9 @@ def main():
     # Step 3: Drop the 'target' and 'total_count' columns to isolate the features
     features = data.drop(['target', 'total_count'], axis=1)
     single_input = features.values[0]  # Select the first row for inference
-    single_input = single_input.reshape(1, -1)
+    # single_input = single_input.reshape(1, -1)
+    #unsqueeze  
+    single_input = np.expand_dims(single_input, axis=0) 
     print(single_input.shape)
     print("Processed Features for Inference:")
     print(single_input)
@@ -81,7 +122,6 @@ def main():
     
     
     #prepare NILLION variables 
-    load_environment()
     
     cluster_id = os.getenv("NILLION_CLUSTER_ID")
     grpc_endpoint = os.getenv("NILLION_NILCHAIN_GRPC")
@@ -93,8 +133,8 @@ def main():
     
     #according to 02_run    FIXME
     seed = "my_seed"
-    model_user_userkey = UserKey.from_seed((seed))
-    model_user_nodekey = NodeKey.from_seed((seed))
+    model_user_userkey = UserKey.from_seed(str(random.randint(0, 1000)))
+    model_user_nodekey = NodeKey.from_seed(str(random.randint(0, 1000)))
     model_user_client = create_nillion_client(model_user_userkey, model_user_nodekey)
     model_user_party_id = model_user_client.party_id
     
@@ -121,10 +161,10 @@ def main():
     
     permissions = nillion.Permissions.default_for_user(model_user_client.user_id)
     permissions.add_compute_permissions({model_user_client.user_id: {program_id}})
-    print("permissions", permissions.is_retrieve_allowed(model_user_client.user_id))
-    print("permissions", permissions.is_delete_allowed(model_user_client.user_id))
-    print("is it allowed", permissions.is_compute_allowed(model_user_client.user_id, program_id))
-    print("permissions", permissions)
+    print("permissions", permissions.is_retrieve_allowed(model_provider_party_id))
+    print("permissions", permissions.is_delete_allowed(model_provider_party_id))
+    print("is it allowed", permissions.is_compute_allowed(model_provider_party_id, program_id))
+    print("permissions", dir(permissions))
 
     cluster_id = os.getenv("NILLION_CLUSTER_ID")
 
@@ -141,14 +181,14 @@ def main():
         1,
         permissions)
     )
-    print('stored', features_store_id)
+    print('Features Store ID:', features_store_id)
     
     compute_bindings = nillion.ProgramBindings(program_id)
-    
     compute_bindings.add_input_party("Provider", model_provider_party_id)
     compute_bindings.add_input_party("User", model_user_party_id)
     compute_bindings.add_output_party("User", model_user_party_id)
-    print("compute_bindings", compute_bindings)
+    
+    print("compute_bindings", dir(compute_bindings))
     # Run the computation
     result = asyncio.run(compute_results(
         model_user_client,
@@ -158,14 +198,14 @@ def main():
         cluster_id,
         compute_bindings,
         model_store_id,
-        features_store_id)
-    )
+        features_store_id
+    ))
     
     print("result",result)
     # Step 10: Return the result of the computation
-    first_key = next(iter(result))
-    output_value = result[first_key]
-    print("output_value", output_value)
+    # first_key = next(iter(result))
+    # output_value = result[first_key]
+    # print("output_value", output_value)
     # return output_value.output(user, "my_output")
 
 if __name__ == "__main__":
