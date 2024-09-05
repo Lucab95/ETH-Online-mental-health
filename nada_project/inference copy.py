@@ -12,6 +12,7 @@ from py_nillion_client import NodeKey, UserKey
 import py_nillion_client as nillion
 import os
 import random
+import torch
 from cosmpy.crypto.keypairs import PrivateKey
 
 async def store_features(model_user_client, payments_wallet, payments_client, cluster_id, input_data, secret_name, nada_type, ttl_days, permissions):
@@ -42,7 +43,6 @@ async def compute_results(model_user_client, payments_wallet, payments_client, p
     )
     return result
 
-
 from dotenv import load_dotenv
 def load_environment():
     home = os.getenv("HOME")
@@ -51,43 +51,66 @@ def load_environment():
     load_dotenv(f".env")
 
 def main():
-    load_environment()
-    csv_file_path = 'depression_dataset copy.csv'  # Update with your actual file path
     
+    #Prepare data
+    csv_file_path = 'depression_dataset copy.csv'  # Update with your actual file path
     data = pd.read_csv(csv_file_path)
-    data = data[:1]
-    print(data)
-    # Step 3: Process the data to prepare it for inference (assuming we are dropping the 'target' column)
-    features = data.drop(['target', 'total_count'], axis=1)  # Adjust this if you have a target column
 
+    # Step 2: Select the first row and drop unnecessary columns (adjust column names as needed)
+    data = data[:1]
+    print("Original Data:")
+    print(data)
+
+    # Step 3: Drop the 'target' and 'total_count' columns to isolate the features
+    features = data.drop(['target', 'total_count'], axis=1)
+    single_input = features.values[0]  # Select the first row for inference
+    single_input = single_input.reshape(1, -1)
+    print(single_input.shape)
+    print("Processed Features for Inference:")
+    print(single_input)
+    
     # # Step 4: Preprocess using MinMaxScaler to normalize the features
     # scaler = MinMaxScaler()
     # scaled_features = scaler.fit_transform(features)
 
     # single_input = np.array(scaled_features[0].reshape(1, -1))  # Selecting the first sample for demonstration
-    single_input = features.values[0]
-    print(single_input)
-
+    
+    
+    
+    
+    
+    
+    #prepare NILLION variables 
+    load_environment()
+    
+    cluster_id = os.getenv("NILLION_CLUSTER_ID")
+    grpc_endpoint = os.getenv("NILLION_NILCHAIN_GRPC")
+    chain_id = os.getenv("NILLION_NILCHAIN_CHAIN_ID")
 
     # Step 8: Store the input data in the Nillion network
-    model_user_userkey = UserKey.from_seed("bcd")
-    model_user_nodekey = NodeKey.from_seed(str(random.randint(0, 1000)))
-
+    # model_user_userkey = UserKey.from_seed("bcd")
+    # model_user_nodekey = NodeKey.from_seed(str(random.randint(0, 1000)))
+    
+    #according to 02_run    FIXME
+    seed = "my_seed"
+    model_user_userkey = UserKey.from_seed((seed))
+    model_user_nodekey = NodeKey.from_seed((seed))
+    model_user_client = create_nillion_client(model_user_userkey, model_user_nodekey)
+    model_user_party_id = model_user_client.party_id
+    
     print("model_user_userkey:", model_user_userkey)
     print("model_user_nodekey:", model_user_nodekey)
-    # Create Nillion client
-    model_user_client = create_nillion_client(model_user_userkey, model_user_nodekey)
-
-    # Define permissions and other parameters
     
     
-    
-    # Payments configuration
-    payments_config = create_payments_config(os.getenv("NILLION_NILCHAIN_CHAIN_ID"), os.getenv("NILLION_NILCHAIN_GRPC"))
+     # Payments configuration
+    payments_config = create_payments_config(chain_id, grpc_endpoint)
     payments_client = LedgerClient(payments_config)
-    payments_wallet = LocalWallet(PrivateKey(bytes.fromhex(os.getenv("NILLION_NILCHAIN_PRIVATE_KEY_0"))), prefix="nillion")
+    payments_wallet = LocalWallet(
+        PrivateKey(bytes.fromhex(os.getenv("NILLION_NILCHAIN_PRIVATE_KEY_0"))),
+        prefix="nillion"
+    )
 
-    # Load program variables
+    # Load program variables - from nillion.ipynb
     with open("src/data/tmp.json", "r") as provider_variables_file:
         provider_variables = json.load(provider_variables_file)
 
@@ -97,32 +120,48 @@ def main():
     
     
     permissions = nillion.Permissions.default_for_user(model_user_client.user_id)
+    permissions.add_compute_permissions({model_user_client.user_id: {program_id}})
     print("permissions", permissions.is_retrieve_allowed(model_user_client.user_id))
     print("permissions", permissions.is_delete_allowed(model_user_client.user_id))
     print("is it allowed", permissions.is_compute_allowed(model_user_client.user_id, program_id))
- 
-    permissions.add_compute_permissions({model_user_client.user_id: {program_id}})
     print("permissions", permissions)
 
     cluster_id = os.getenv("NILLION_CLUSTER_ID")
 
     print('pre store_features')
-
     # Store the features in the Nillion network (async call)
-    features_store_id = asyncio.run(store_features(model_user_client, payments_wallet, payments_client, cluster_id, single_input, "my_input", na.SecretRational, 1, permissions))
+    features_store_id = asyncio.run(store_features(
+        model_user_client,
+        payments_wallet,
+        payments_client,
+        cluster_id,
+        single_input,
+        "my_input",
+        na.SecretRational,
+        1,
+        permissions)
+    )
     print('stored', features_store_id)
     
-    
-    
-    # Step 9: Set up the compute bindings and run inference
     compute_bindings = nillion.ProgramBindings(program_id)
+    
     compute_bindings.add_input_party("Provider", model_provider_party_id)
-    compute_bindings.add_input_party("User", model_user_client.party_id)
-    compute_bindings.add_output_party("User", model_user_client.party_id)
+    compute_bindings.add_input_party("User", model_user_party_id)
+    compute_bindings.add_output_party("User", model_user_party_id)
     print("compute_bindings", compute_bindings)
     # Run the computation
-    result = asyncio.run(compute_results(model_user_client, payments_wallet, payments_client, program_id, cluster_id, compute_bindings, model_store_id, features_store_id))
-    print("result", result)
+    result = asyncio.run(compute_results(
+        model_user_client,
+        payments_wallet,
+        payments_client,
+        program_id,
+        cluster_id,
+        compute_bindings,
+        model_store_id,
+        features_store_id)
+    )
+    
+    print("result",result)
     # Step 10: Return the result of the computation
     first_key = next(iter(result))
     output_value = result[first_key]
