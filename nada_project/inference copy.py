@@ -78,17 +78,6 @@ def load_environment():
     load_dotenv(f".env")
 
 def main():
-    # load_environment()
-    # load_dotenv('.env', override=True)
-    # with open('.env') as f:
-    #     for line in f:
-    #         # Ignore comments and empty lines
-    #         line = line.strip()
-    #         if line and not line.startswith('#'):
-    #             key, value = line.split('=', 1)
-    #             os.environ[key.strip()] = value.strip()
-    
-    # Load environment variables
     load_environment()
     
     #Prepare data
@@ -109,27 +98,12 @@ def main():
     print(single_input.shape)
     print("Processed Features for Inference:")
     print(single_input)
-    
-    # # Step 4: Preprocess using MinMaxScaler to normalize the features
-    # scaler = MinMaxScaler()
-    # scaled_features = scaler.fit_transform(features)
 
-    # single_input = np.array(scaled_features[0].reshape(1, -1))  # Selecting the first sample for demonstration
-    
-    
-    
-    
-    
-    
     #prepare NILLION variables 
     
     cluster_id = os.getenv("NILLION_CLUSTER_ID")
     grpc_endpoint = os.getenv("NILLION_NILCHAIN_GRPC")
     chain_id = os.getenv("NILLION_NILCHAIN_CHAIN_ID")
-
-    # Step 8: Store the input data in the Nillion network
-    # model_user_userkey = UserKey.from_seed("bcd")
-    # model_user_nodekey = NodeKey.from_seed(str(random.randint(0, 1000)))
     
     #according to 02_run    FIXME
     seed = "my_seed"
@@ -161,9 +135,6 @@ def main():
     
     permissions = nillion.Permissions.default_for_user(model_user_client.user_id)
     permissions.add_compute_permissions({model_user_client.user_id: {program_id}})
-    print("permissions", permissions.is_retrieve_allowed(model_provider_party_id))
-    print("permissions", permissions.is_delete_allowed(model_provider_party_id))
-    print("is it allowed", permissions.is_compute_allowed(model_provider_party_id, program_id))
     print("permissions", dir(permissions))
 
     cluster_id = os.getenv("NILLION_CLUSTER_ID")
