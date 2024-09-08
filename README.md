@@ -1,14 +1,28 @@
-# Nillion Python Starter <a href="https://github.com/NillionNetwork/nillion-python-starter/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+# Nillion installation check --> https://docs.nillion.com/nillion-sdk-and-tools
+curl https://nilup.nilogy.xyz/install.sh | bash
+# open new terminal
+nilup -V
+// Your output should be similar to the below
+nilup 22c84830fff3c86beec27a8cb6353d45e7bfb8a4
 
-Welcome to the start of your Nillion developer journey.
+nilup install latest
+nilup use latest
+nilup init
 
-This repo corresponds to the Nillion Python quickstart. To get started with Nillion head over to the [Python QuickStart docs](https://docs.nillion.com/python-quickstart) and follow the quickstart guide. 
 
-For more python examples, check out https://github.com/NillionNetwork/python-examples which contains the following:
-- core_concept_multi_party_compute
-- core_concept_permissions
-- core_concept_single_party_compute
-- core_concept_store_and_retrieve_secrets
-- millionaires_problem_example
-- nada_programs
-- voting_tutorial
+# ETH-Online-mental-health
+### Inference 
+
+1. Create a virtual environment and activate it:
+```
+python -m venv venv
+source venv/bin/activate 
+```
+
+2. Install all the required library by:
+```
+ pip install -r requirements.txt
+ ```
+3. Create an .env file according to `https://docs.nillion.com/network-configuration` and place it inside `/nillion/quickstart/nada_quickstart_programs`
+
+4. Do nillion-devnet which will print: 🌄 environment file written to /Users/User/.config/nillion/nillion-devnet.env on the last line, open that file and create and paste its components on an .env file on the quickstart_complete/client_code folder
