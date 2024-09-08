@@ -52,39 +52,119 @@ class MentalHealthNN(nn.Module):
         
 
 # Load your dataset
-depression = pd.read_csv('depression_dataset.csv')
-
-# Initialize dataset
-dataset = MentalHealthDataset(depression)
-
-# Split into train and test sets
-train_size = int(0.7 * len(dataset))
-val_size = int(0.15 * len(dataset))
-test_size = len(dataset) - train_size - val_size
-
-train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, val_size, test_size])
-
-# Create data loaders
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=32, shuffle=False)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False)
-
-
-# Initialize model, loss function, and optimizer
-input_size = dataset.data.shape[1]
-num_classes = len(dataset.label_encoder.classes_)
-model = MentalHealthNN(input_size, num_classes)
-
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-
-train_accuracies = []
-val_accuracies = []
-train_losses = []
-
-
 import asyncio
 async def upload_model():
+
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    from torch.utils.data import DataLoader, TensorDataset
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+    from sklearn.metrics import classification_report, confusion_matrix
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    # Load your dataset
+    depression = pd.read_csv('depression_dataset.csv')
+    target = depression['target']
+    depression.drop(['target', 'total_count'], axis=1, inplace=True)
+
+    # Encode the string labels into integers
+    label_encoder = LabelEncoder()
+    y_encoded = label_encoder.fit_transform(target)
+
+    # Split the data
+    x_train, x_test, y_train, y_test = train_test_split(depression, y_encoded, test_size=0.2, random_state=42)
+
+    # Scaling the data
+    scaler = MinMaxScaler()
+    x_train_scaled = scaler.fit_transform(x_train)
+    x_test_scaled = scaler.transform(x_test)
+
+    # Convert to PyTorch tensors
+    x_train_tensor = torch.tensor(x_train_scaled, dtype=torch.float32)
+    x_test_tensor = torch.tensor(x_test_scaled, dtype=torch.float32)
+    y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+    y_test_tensor = torch.tensor(y_test, dtype=torch.long)
+
+    # Create DataLoader
+    train_dataset = TensorDataset(x_train_tensor, y_train_tensor)
+    test_dataset = TensorDataset(x_test_tensor, y_test_tensor)
+
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+    # Define the neural network model
+    class NeuralNetwork(nn.Module):
+        def __init__(self, input_size, num_classes):
+            super(NeuralNetwork, self).__init__()
+            self.fc1 = nn.Linear(input_size, 64)
+            self.fc2 = nn.Linear(64, 32)
+            self.fc3 = nn.Linear(32, 16)
+            self.fc4 = nn.Linear(16, num_classes)
+            self.relu = nn.ReLU()
+
+        def forward(self, x):
+            x = self.relu(self.fc1(x))
+            x = self.relu(self.fc2(x))
+            x = self.relu(self.fc3(x))
+            return x
+
+    # Initialize model, loss function, and optimizer
+    input_size = x_train_tensor.shape[1]
+    num_classes = len(label_encoder.classes_)
+    model = NeuralNetwork(input_size, num_classes)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    # Lists to store loss and accuracy for each epoch
+    train_losses = []
+    train_accuracies = []
+    val_accuracies = []
+
+    # Train the model
+    epochs = 20
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        for inputs, labels in train_loader:
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+        
+        epoch_loss = running_loss / len(train_loader)
+        epoch_accuracy = 100 * correct / total
+        train_losses.append(epoch_loss)
+        train_accuracies.append(epoch_accuracy)
+
+        # Validation phase
+        model.eval()
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for inputs, labels in test_loader:
+                outputs = model(inputs)
+                _, predicted = torch.max(outputs, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+        
+        val_accuracy = 100 * correct / total
+        val_accuracies.append(val_accuracy)
+
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}, Train Accuracy: {epoch_accuracy:.2f}%, Val Accuracy: {val_accuracy:.2f}%")
+
+
+
     from dotenv import load_dotenv
     load_dotenv(f".env")
     cluster_id = os.getenv("NILLION_CLUSTER_ID")
@@ -188,7 +268,7 @@ async def upload_model():
     # json.dump(provider_variables, provider_variables_file)  # This should be inside the with block
 
     print('model fully stored')
-    return program_id, model_store_id, model_provider_party_id, permissions, model_secrets, payments_client, model_provider_client, model_provider_user_id, payments_wallet, cluster_id
+    return program_id, model_store_id, model_provider_party_id, permissions, model_secrets, payments_client, model_provider_client, model_provider_user_id, payments_wallet, cluster_id, label_encoder
 
 def initialize_model():
     return asyncio.run(upload_model())
@@ -201,13 +281,13 @@ if "model_info" not in st.session_state:
     # Run the model upload only once and store it in session_state
     st.write("Uploading model...")
     model_info = asyncio.run(upload_model())
-    program_id, model_store_id, model_provider_party_id, permissions, model_secrets, payments_client, model_provider_client, model_provider_user_id, payments_wallet, cluster_id = model_info
+    program_id, model_store_id, model_provider_party_id, permissions, model_secrets, payments_client, model_provider_client, model_provider_user_id, payments_wallet, cluster_id, label_encoder = model_info
 
     st.session_state.model_info = model_info
 else:
     # Retrieve the model info from session state if it's already been uploaded
     model_info = st.session_state.model_info
-    program_id, model_store_id, model_provider_party_id, permissions, model_secrets, payments_client, model_provider_client, model_provider_user_id, payments_wallet, cluster_id = model_info
+    program_id, model_store_id, model_provider_party_id, permissions, model_secrets, payments_client, model_provider_client, model_provider_user_id, payments_wallet, cluster_id,label_encoder = model_info
 
 import pandas as pd
 import torch
@@ -307,6 +387,14 @@ question_list = list(questions_array.items())
 if "responses" not in st.session_state:
     st.session_state.responses = {}
 
+st.title("Mental Health Assessment")
+st.markdown("""
+This questionnaire is designed to help you evaluate your mental well-being. 
+Please respond to each statement based on how you have been feeling recently. 
+Your responses are processed confidentially, our model will give you feedback on your mental health in fully private manner.
+Please remember that this is not a definitive diagnosis. For an accurate evaluation, consult with a healthcare professional.
+""")
+
 # Create a form
 with st.form("questionnaire_form"):
     for current_question_key, current_question_text in question_list:
@@ -373,14 +461,11 @@ if submit_button:
     # st.write(st.session_state.responses)  # Display the stored integer responses for verification
     input_df = pd.DataFrame([st.session_state.responses])
 
-    # Prepare input for Nillion computation using st.session_state.responses
-    input_df = pd.DataFrame([st.session_state.responses])
+    st.dataframe(input_df)
 
-    # Reshape the input batch to match the expected input size for the model
-    input_batch = input_df.values.reshape(1, -1)  # 1 row, N columns for N questions
 
     # Convert the input to the NADA format
-    my_input_batch = na_client.array(input_batch, "my_input", na.SecretRational)
+    my_input_batch = na_client.array(input_df.values, "my_input", na.SecretRational)
 
     async def run_nillion_computation():
         input_secrets_batch = nillion.NadaValues(my_input_batch)
@@ -432,32 +517,26 @@ if submit_button:
                 key=lambda x: int(x[0].replace("my_output", "").replace("_", "")),
             )
         ]
+        
 
         print(f"🖥️  The processed result is {outputs} @ {na.get_log_scale()}-bit precision")
 
         st.write(f"Processed result: {outputs}")
-        class_mapping = {
-        'Extremely Severe': 0,
-        'Mild': 1,
-        'Moderate': 2,
-        'Normal': 3,
-        'Severe': 4
-    }
 
         # The mapping to the classes
-        class_mapping = {
-            'Extremely Severe': 0,
-            'Mild': 1,
-            'Moderate': 2,
-            'Normal': 3,
-            'Severe': 4
-        }
+       
+        class_mapping = {class_name: idx for idx, class_name in enumerate(label_encoder.classes_)}
+        print(class_mapping)
 
-        # Map the outputs to their corresponding classes
-        output_mapping = {class_name: outputs[class_idx] for class_name, class_idx in class_mapping.items()}
+        # Map the output tensor probabilities to the corresponding class names
+        output_mapping = {class_name: outputs[idx] for class_name, idx in class_mapping.items()}
 
-        # Get the class with the highest chance
+        # Get the class with the highest probability
         highest_class = max(output_mapping, key=output_mapping.get)
+
+        # Print the results
+        print(output_mapping)
+        print(f"Highest probability class: {highest_class}")
 
 
         # Showing the highest class in a highlighted format
@@ -465,8 +544,6 @@ if submit_button:
             st.markdown(f"### Based on your responses, the model indicates **no depression symptoms**.")
         else:
             st.markdown(f"### Based on your responses, the model indicates **{highest_class} depressive symptoms**.")
-
-                        
 
             # Run the async Nillion computation
     asyncio.run(run_nillion_computation())
